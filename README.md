@@ -2,6 +2,8 @@
 
 > Cinema 4D 扩展。渲染结束后，自动把输出目录下指定名称的文件夹（默认 `mat` / `obj`）移入回收站。
 
+**在线介绍页 → https://jaymik1947.github.io/c4d-render-cleanup/**
+
 渲染一次，Redshift 就给你甩出一堆按 AOV 命名的文件夹：`mat`、`obj`、`crypto`……一条序列跑完，硬盘里躺着几十个只装了一两张 EXR 的目录。这个扩展干一件事：**渲染一结束，把它们扫进回收站**。
 
 删错了能还原——走的是 Windows 回收站，不是永久删除。
