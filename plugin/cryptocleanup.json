@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "dry_run": false,
+  "delay_ms": 4000,
+  "quiet_s": 3.0,
+  "max_retries": 5,
+  "cooldown_s": 10,
+  "names": [
+    "mat",
+    "obj"
+  ],
+  "roots": [
+    "<render_output>"
+  ],
+  "root_override": null,
+  "recursive": false,
+  "min_depth": 3,
+  "allow_network": false,
+  "allow_permanent_fallback": false,
+  "protect": []
+}
