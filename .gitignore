@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyp.tmp
+
+# 运行产物
+*.log
+*.log.*
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
