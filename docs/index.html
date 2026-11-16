@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>渲染后删除文件夹 · C4D Render Cleanup</title>
+<meta name="description" content="Cinema 4D 扩展：渲染结束后自动把 mat / obj 这类 AOV 派生目录移入回收站。可还原，不误删，配置全在扩展菜单里。">
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#08090c;
+    --panel:#0f1116;
+    --panel-2:#14171e;
+    --line:rgba(255,255,255,.085);
+    --line-2:rgba(255,255,255,.14);
+    --text:#e9ebef;
+    --dim:#8a9099;
+    --dim-2:#5f656e;
+    --accent:#ff5533;
+    --accent-2:#ff9f43;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Mono",Consolas,monospace;
+  }
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+    font-size:16px;line-height:1.7;-webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(900px 500px at 78% -12%, rgba(255,85,51,.16), transparent 62%),
+      radial-gradient(700px 420px at 8% 8%, rgba(255,159,67,.07), transparent 60%);
+  }
+  .wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:0 24px}
+  a{color:inherit;text-decoration:none}
+
+  /* ---------- nav ---------- */
+  nav{
+    position:sticky;top:0;z-index:50;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    background:rgba(8,9,12,.72);border-bottom:1px solid var(--line);
+  }
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;letter-spacing:.2px}
+  .logo{
+    width:22px;height:22px;border-radius:6px;flex:none;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2));
+    box-shadow:0 0 18px rgba(255,85,51,.45);
+    display:grid;place-items:center;
+  }
+  .logo svg{width:13px;height:13px}
+  .nav-links{display:flex;align-items:center;gap:22px;font-size:14px;color:var(--dim)}
+  .nav-links a:hover{color:var(--text)}
+  .nav-links .ghost{
+    color:var(--text);border:1px solid var(--line-2);padding:5px 12px;border-radius:7px;
+    transition:border-color .2s,background .2s;
+  }
+  .nav-links .ghost:hover{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.26)}
+
+  /* ---------- hero ---------- */
+  header{padding:84px 0 72px;position:relative}
+  .hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center}
+  .tag{
+    display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.6px;
+    color:var(--accent-2);border:1px solid rgba(255,159,67,.28);
+    background:rgba(255,159,67,.07);padding:5px 11px;border-radius:999px;margin-bottom:22px;
+    text-transform:uppercase;font-weight:600;
+  }
+  h1{
+    font-size:46px;line-height:1.18;margin:0 0 18px;letter-spacing:-.8px;font-weight:700;
+  }
+  h1 .sub{display:block;font-size:17px;font-weight:400;color:var(--dim);letter-spacing:0;margin-top:14px;line-height:1.65}
+  .lead{color:var(--dim);font-size:16px;margin:0 0 30px;max-width:44ch}
+  .lead b{color:var(--text);font-weight:600}
+  .cta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:9px;
+    font-size:14.5px;font-weight:600;transition:transform .15s,box-shadow .2s,background .2s,border-color .2s;
+  }
+  .btn-main{
+    background:linear-gradient(135deg,var(--accent),#ff7a3d);color:#fff;
+    box-shadow:0 8px 28px -10px rgba(255,85,51,.85);
+  }
+  .btn-main:hover{transform:translateY(-1px);box-shadow:0 12px 34px -10px rgba(255,85,51,.95)}
+  .btn-ghost{border:1px solid var(--line-2);color:var(--text)}
+  .btn-ghost:hover{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.28)}
+
+  /* ---------- 对话框模拟 ---------- */
+  .mock{
+    background:linear-gradient(180deg,#1a1d24,#121419);
+    border:1px solid var(--line-2);border-radius:12px;overflow:hidden;
+    box-shadow:0 30px 70px -30px rgba(0,0,0,.95),0 0 0 1px rgba(0,0,0,.4);
+    font-size:13px;
+  }
+  .mock-bar{
+    display:flex;align-items:center;gap:8px;padding:9px 13px;
+    background:#22262e;border-bottom:1px solid rgba(0,0,0,.5);font-size:12px;color:#cfd3da;
+  }
+  .dot{width:9px;height:9px;border-radius:50%}
+  .mock-body{padding:18px 18px 14px}
+  .mock-row{display:flex;align-items:center;gap:9px;margin-bottom:14px;color:#dfe2e8}
+  .box{
+    width:14px;height:14px;border-radius:3px;background:linear-gradient(135deg,var(--accent),#ff7a3d);
+    display:grid;place-items:center;flex:none;
+  }
+  .box svg{width:9px;height:9px}
+  .mock-label{font-size:12px;color:#9aa0a9;margin-bottom:6px}
+  .field{
+    background:#0b0d11;border:1px solid rgba(255,255,255,.12);border-radius:5px;
+    padding:8px 10px;font-family:var(--mono);font-size:12.5px;color:#e6e8ec;line-height:1.85;
+  }
+  .field .n{color:var(--accent-2)}
+  .mock-foot{
+    display:flex;align-items:center;gap:8px;margin-top:14px;padding-top:13px;
+    border-top:1px solid rgba(255,255,255,.07);color:#9aa0a9;font-size:12px;
+  }
+  .mock-foot .val{
+    font-family:var(--mono);background:#0b0d11;border:1px solid rgba(255,255,255,.12);
+    border-radius:4px;padding:2px 9px;color:#fff;
+  }
+  .mock-foot .spacer{flex:1}
+  .mini{
+    padding:5px 13px;border-radius:5px;font-size:12px;
+    background:#2b303a;border:1px solid rgba(255,255,255,.1);color:#dfe2e8;
+  }
+  .mini.ok{background:linear-gradient(135deg,var(--accent),#ff7a3d);border-color:transparent;color:#fff}
+
+  /* ---------- 通用区块 ---------- */
+  section{padding:76px 0;border-top:1px solid var(--line)}
+  .sec-head{margin-bottom:44px;max-width:62ch}
+  .kicker{
+    font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--accent-2);
+    font-weight:700;margin-bottom:12px;
+  }
+  h2{font-size:29px;margin:0 0 12px;letter-spacing:-.3px;font-weight:700}
+  .sec-head p{color:var(--dim);margin:0}
+
+  .grid-4{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:22px;
+    transition:border-color .2s,background .2s,transform .2s;
+  }
+  .card:hover{border-color:var(--line-2);background:var(--panel-2);transform:translateY(-2px)}
+  .card h3{margin:0 0 8px;font-size:15.5px;font-weight:650}
+  .card p{margin:0;color:var(--dim);font-size:14px;line-height:1.65}
+  .ico{
+    width:30px;height:30px;border-radius:8px;margin-bottom:14px;
+    background:rgba(255,85,51,.11);border:1px solid rgba(255,85,51,.25);
+    display:grid;place-items:center;color:var(--accent-2);
+  }
+  .ico svg{width:15px;height:15px}
+
+  /* ---------- 安装 ---------- */
+  .steps{display:grid;gap:14px}
+  .step{display:grid;grid-template-columns:26px 1fr;gap:16px;align-items:start}
+  .num{
+    width:26px;height:26px;border-radius:50%;border:1px solid var(--line-2);
+    display:grid;place-items:center;font-size:12.5px;color:var(--dim);font-family:var(--mono);
+  }
+  .step h4{margin:2px 0 6px;font-size:15px;font-weight:600}
+  .step p{margin:0;color:var(--dim);font-size:14px}
+  code.inline{
+    font-family:var(--mono);font-size:12.5px;background:rgba(255,255,255,.06);
+    padding:1.5px 6px;border-radius:4px;color:#ffd9c9;
+  }
+  .code{
+    position:relative;margin-top:14px;background:#0b0d11;border:1px solid var(--line);
+    border-radius:9px;padding:15px 52px 15px 16px;font-family:var(--mono);
+    font-size:12.5px;color:#c9ced7;overflow-x:auto;line-height:1.85;
+  }
+  .code .c{color:var(--dim-2)}
+  .code .k{color:#ff9f43}
+  .copy{
+    position:absolute;top:9px;right:9px;width:28px;height:28px;border-radius:6px;
+    border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--dim);
+    display:grid;place-items:center;cursor:pointer;transition:.2s;
+  }
+  .copy:hover{color:var(--text);border-color:var(--line-2);background:rgba(255,255,255,.08)}
+  .copy svg{width:13px;height:13px}
+
+  /* ---------- 流程 ---------- */
+  .flow{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .flow-col{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px}
+  .flow-col h4{margin:0 0 4px;font-size:14px;display:flex;align-items:center;gap:8px}
+  .pill{
+    font-size:10.5px;font-family:var(--mono);padding:2px 7px;border-radius:999px;
+    border:1px solid var(--line-2);color:var(--dim);letter-spacing:.3px;
+  }
+  .pill.on{color:#9be2a8;border-color:rgba(155,226,168,.3);background:rgba(155,226,168,.08)}
+  .pill.off{color:#ff9f9f;border-color:rgba(255,120,120,.28);background:rgba(255,120,120,.07)}
+  .flow-col p{margin:10px 0 0;color:var(--dim);font-size:13.5px}
+  .flow-note{
+    margin-top:16px;font-size:13.5px;color:var(--dim);
+    border-left:2px solid rgba(255,85,51,.5);padding:2px 0 2px 14px;
+  }
+
+  /* ---------- 表格 ---------- */
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;font-size:12px;letter-spacing:.5px;text-transform:uppercase}
+  td:first-child{font-family:var(--mono);font-size:12.5px;color:#ffd9c9;white-space:nowrap}
+  td:last-child{color:var(--dim)}
+  tr:hover td{background:rgba(255,255,255,.018)}
+
+  /* ---------- AI 卡片 ---------- */
+  .ai{
+    background:linear-gradient(150deg,rgba(255,85,51,.09),rgba(255,159,67,.03) 55%,transparent);
+    border:1px solid rgba(255,85,51,.22);border-radius:13px;padding:30px;
+  }
+  .ai h2{margin-top:0}
+  .ai p{color:var(--dim);margin:0 0 20px;max-width:60ch}
+  .prompt{
+    background:rgba(0,0,0,.45);border:1px solid var(--line);border-radius:9px;
+    padding:16px 18px;font-family:var(--mono);font-size:12.5px;color:#d6dae1;line-height:1.9;
+  }
+  .prompt .k{color:var(--accent-2)}
+  .files{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+  .chip{
+    font-family:var(--mono);font-size:11.5px;padding:4px 10px;border-radius:6px;
+    background:rgba(255,255,255,.045);border:1px solid var(--line);color:#b9bfc8;
+  }
+
+  footer{border-top:1px solid var(--line);padding:36px 0 48px;color:var(--dim-2);font-size:13px}
+  footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center}
+  footer a:hover{color:var(--text)}
+
+  .reveal{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
+  .reveal.in{opacity:1;transform:none}
+
+  @media (max-width:860px){
+    .hero{grid-template-columns:1fr;gap:40px}
+    h1{font-size:36px}
+    .grid-4,.flow{grid-template-columns:1fr}
+    header{padding:56px 0 48px}
+    section{padding:56px 0}
+    .nav-links a:not(.ghost){display:none}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <span class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round">
+          <path d="M4 7h16M9 7V5h6v2M6 7l1 12h10l1-12"/>
+        </svg>
+      </span>
+      渲染后删除文件夹
+    </a>
+    <div class="nav-links">
+      <a href="#features">功能</a>
+      <a href="#install">安装</a>
+      <a href="#how">原理</a>
+      <a href="#ai">AI 改造</a>
+      <a class="ghost" href="https://github.com/jaymik1947/c4d-render-cleanup" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header id="top">
+  <div class="wrap hero">
+    <div>
+      <div class="tag">Cinema 4D 扩展 · R2024+</div>
+      <h1>
+        渲染完就收拾干净
+        <span class="sub">渲染结束后，自动把 <b>mat</b> / <b>obj</b> 这类 AOV 派生目录移入回收站。删错能还原。</span>
+      </h1>
+      <p class="lead">
+        一条序列跑完，硬盘里躺着几十个只装了一两张 EXR 的文件夹。
+        这个扩展只干一件事：<b>渲染一结束，把它们扫进回收站。</b>
+      </p>
+      <div class="cta">
+        <a class="btn btn-main" href="https://github.com/jaymik1947/c4d-render-cleanup" target="_blank" rel="noopener">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5 3.3 9.3 7.9 10.8.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.1.1 1.7 1.1 1.7 1.1 1 1.7 2.7 1.2 3.3.9.1-.7.4-1.2.7-1.5-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11 11 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .4.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.8C23.5 5.7 18.3.5 12 .5z"/></svg>
+          查看源码
+        </a>
+        <a class="btn btn-ghost" href="#install">怎么装</a>
+      </div>
+    </div>
+
+    <div class="mock">
+      <div class="mock-bar">
+        <span class="dot" style="background:#ff5f57"></span>
+        <span class="dot" style="background:#febc2e"></span>
+        <span class="dot" style="background:#28c840"></span>
+        <span style="margin-left:6px">渲染后删除文件夹</span>
+      </div>
+      <div class="mock-body">
+        <div class="mock-row">
+          <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"><path d="M4 12l5 5L20 6"/></svg></span>
+          启用（渲染结束后自动删除）
+        </div>
+        <div class="mock-label">要删除的文件夹名（每行一个，加一行就是新增）：</div>
+        <div class="field"><span class="n">mat</span><br><span class="n">obj</span><br><span style="color:#4a505a">▏</span></div>
+        <div class="mock-foot">
+          渲染结束后等待 <span class="val">4</span> 秒再删除
+          <span class="spacer"></span>
+          <span class="mini">取消</span>
+          <span class="mini ok">确定</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">Features</div>
+      <h2>四个开关，别的一个没有</h2>
+      <p>不做渲染管理，不做文件浏览器。只解决「渲染完这堆目录怎么办」。</p>
+    </div>
+    <div class="grid-4">
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+        <h3>文件夹名自己定</h3>
+        <p>默认 <code class="inline">mat</code> 和 <code class="inline">obj</code>，每行一个，随时增删。精确匹配、不区分大小写。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v6M12 15v6M5 12h4M15 12h4"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3>总开关</h3>
+        <p>取消勾选立即生效，后台守护下一次触发就停手，不用重启 C4D。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+        <h3>延迟可调</h3>
+        <p>默认渲染结束后 4 秒动手，可以填小数。EXR 还在写就自动推迟重试。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2"/><path d="M6 7l1 12h10l1-12"/><path d="M10 11v5M14 11v5"/></svg></div>
+        <h3>进回收站，不是粉碎</h3>
+        <p>走 Windows Shell API，删错能还原。检测到磁盘没有回收站就拒绝执行。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">Install</div>
+      <h2>两步装完</h2>
+      <p>不需要装 Python、不需要 pip、不需要编译。</p>
+    </div>
+
+    <div class="steps reveal">
+      <div class="step">
+        <div class="num">1</div>
+        <div>
+          <h4>把 plugin 文件夹放进 C4D 插件目录</h4>
+          <p>任选其一（推荐用户目录，升级 C4D 不会丢）：</p>
+          <div class="code" id="code1">
+<button class="copy" data-copy="code1" aria-label="复制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+<span class="c"># 用户目录（推荐）</span>
+%APPDATA%\Maxon\Maxon Cinema 4D 2024_XXXX\plugins\
+
+<span class="c"># 或者程序目录</span>
+<span class="k">&lt;C4D 安装路径&gt;</span>\plugins\</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div>
+          <h4>重启 C4D，打开 <code class="inline">扩展 → 渲染后删除文件夹</code></h4>
+          <p>日志出现这一行就成功了：</p>
+          <div class="code" id="code2">
+<button class="copy" data-copy="code2" aria-label="复制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+<span class="k">插件注册</span>：菜单=True 后台=True  版本=C4D 2024200  Python=3.11.4</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">How it works</div>
+      <h2>为什么是双通道</h2>
+      <p>C4D 的「渲染结束」没有可靠的公开事件，所以两条路一起走，谁先到算谁的。</p>
+    </div>
+
+    <div class="flow reveal">
+      <div class="flow-col">
+        <h4>通道 A <span class="pill off">实测未触发</span></h4>
+        <p><code class="inline">EVMSG_RAYTRACER_FINISHED</code> —— SDK 私有事件。快，但在 R2024 + Redshift 下实测没发过。</p>
+      </div>
+      <div class="flow-col">
+        <h4>通道 B <span class="pill on">真正生效</span></h4>
+        <p>1 秒心跳轮询渲染状态，检测 <code class="inline">True → False</code> 的落沿。稳，代价可忽略。</p>
+      </div>
+    </div>
+
+    <div class="flow-note reveal">
+      两条通道共用冷却时间，不会重复执行。<br>
+      路径解析是唯一的坑：C4D 的 <code class="inline">RDATA_PATH</code> 存的是<b>未解析的 token</b>（比如 <code class="inline">...\test\$pass\$prj$res</code>），插件会剥掉含 <code class="inline">$</code> 的片段，再回退到最近一个真实存在的目录。
+    </div>
+  </div>
+</section>
+
+<section id="config">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">Config</div>
+      <h2>配置都在界面上</h2>
+      <p>设置面板写的是一份 JSON，也可以直接改文件。下面是全部字段。</p>
+    </div>
+    <div class="reveal" style="overflow-x:auto">
+      <table>
+        <thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>enabled</td><td>true</td><td>总开关</td></tr>
+          <tr><td>names</td><td>["mat","obj"]</td><td>要删除的文件夹名，精确匹配、忽略大小写</td></tr>
+          <tr><td>delay_ms</td><td>4000</td><td>渲染结束后延迟毫秒数</td></tr>
+          <tr><td>quiet_s</td><td>3.0</td><td>目录内文件多久没改动才算写完</td></tr>
+          <tr><td>cooldown_s</td><td>10</td><td>两次执行的冷却，防重复触发</td></tr>
+          <tr><td>roots</td><td>["&lt;render_output&gt;"]</td><td>扫描根目录，占位符取当前文档渲染设置</td></tr>
+          <tr><td>root_override</td><td>null</td><td>填绝对路径可跳过自动解析</td></tr>
+          <tr><td>min_depth</td><td>3</td><td>路径层级下限，太浅拒删</td></tr>
+          <tr><td>protect</td><td>[]</td><td>保护路径，命中即跳过</td></tr>
+          <tr><td>allow_network</td><td>false</td><td>是否允许网络路径（那里没有回收站）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="ai">
+  <div class="wrap">
+    <div class="ai reveal">
+      <div class="kicker">Built for AI</div>
+      <h2>拿走，让 AI 改成你自己的</h2>
+      <p>
+        仓库根目录有 <code class="inline">AGENTS.md</code>：模块职责、关键 API、实战踩过的七个坑、常见改造路径，全写清楚了。
+        Claude Code、Cursor、Copilot 这类工具会直接读它，你不用解释背景。
+      </p>
+      <div class="prompt">
+        读 <span class="k">AGENTS.md</span>，然后帮我把文件夹名匹配改成支持通配符 <span class="k">mat*</span> 和 <span class="k">obj*</span>，<br>
+        保持现有的所有护栏不变，改完告诉我动了哪些文件。
+      </div>
+      <div class="files">
+        <span class="chip">plugin/cryptocleanup.pyp</span>
+        <span class="chip">plugin/cryptocleanup_core.py</span>
+        <span class="chip">AGENTS.md</span>
+        <span class="chip">MIT License</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>渲染后删除文件夹 · C4D Render Cleanup · MIT</span>
+    <span><a href="https://github.com/jaymik1947/c4d-render-cleanup" target="_blank" rel="noopener">github.com/jaymik1947/c4d-render-cleanup ↗</a></span>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var el = document.getElementById(btn.dataset.copy);
+      var text = el.innerText.replace(/^\s*$[\r\n]*/gm, '').trim();
+      navigator.clipboard.writeText(text).then(function () {
+        var old = btn.innerHTML;
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#9be2a8" stroke-width="2.4"><path d="M4 12l5 5L20 6"/></svg>';
+        setTimeout(function () { btn.innerHTML = old; }, 1200);
+      });
+    });
+  });
+
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+  } else {
+    document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in'); });
+  }
+</script>
+</body>
+</html>
